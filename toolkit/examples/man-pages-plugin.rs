@@ -101,6 +101,7 @@ impl PluginExt for WhatIsPlugin {
                     icon: None,
                     exec: None,
                     window: None,
+                    score: 0.,
                 }))
                 .await;
             }

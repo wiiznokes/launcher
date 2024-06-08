@@ -204,6 +204,7 @@ impl<W: AsyncWrite + Unpin> App<W> {
                         .map(|e| Cow::Owned(e.to_string()))
                         .map(IconSource::Name),
                     exec: entry.exec().map(|e| e.to_string()),
+                    score,
                     ..Default::default()
                 });
 

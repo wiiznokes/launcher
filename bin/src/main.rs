@@ -60,7 +60,7 @@ fn init_logging(cmd: &str) {
 
     if let Ok(file) = logfile {
         if let Ok(meta) = file.metadata() {
-            if meta.len() > 1000 {
+            if meta.len() > 10000 {
                 let _ = file.set_len(0);
             }
         }

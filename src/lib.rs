@@ -111,6 +111,8 @@ pub struct PluginSearchResult {
     pub exec: Option<String>,
     /// Designates that this search item refers to a window.
     pub window: Option<(Generation, Indice)>,
+    // between 0 and 1
+    pub score: f64,
 }
 
 impl PluginSearchResult {

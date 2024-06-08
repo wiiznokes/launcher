@@ -168,6 +168,7 @@ impl<W: AsyncWrite + Unpin> App<W> {
                     &self.desktop_entries,
                     fde::matching::MatchAppIdOptions::default(),
                 )
+                .map(|e| (e, 0.))
             } else {
                 fde::matching::get_best_match(
                     &[&info.app_id, &info.title],
@@ -183,14 +184,14 @@ impl<W: AsyncWrite + Unpin> App<W> {
                     );
 
                     if score > 0.6 {
-                        Some(de)
+                        Some((de, score))
                     } else {
                         None
                     }
                 })
             };
 
-            if let Some(de) = entry {
+            if let Some((de, score)) = entry {
                 let icon_name = if let Some(icon) = de.icon() {
                     Cow::Owned(icon.to_owned())
                 } else {
@@ -205,6 +206,7 @@ impl<W: AsyncWrite + Unpin> App<W> {
                     description: info.title.clone(),
                     name: get_description(de, &self.locales),
                     icon: Some(IconSource::Name(icon_name)),
+                    score,
                     ..Default::default()
                 });
 

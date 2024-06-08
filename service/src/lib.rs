@@ -9,6 +9,7 @@ mod recent;
 pub use client::*;
 pub use plugins::config;
 pub use plugins::external::load;
+use tracing::warn;
 
 use crate::plugins::{
     ExternalPlugin, HelpPlugin, Plugin, PluginConfig, PluginConnector, PluginPriority, PluginQuery,
@@ -515,7 +516,12 @@ impl<O: futures::Sink<Response> + Unpin> Service<O> {
         if *no_sort {
             *no_sort = false;
         } else {
+            warn!("active_search: {}", active_search.len());
+
             active_search.sort_by(|a, b| {
+
+                // return b.1.score.partial_cmp(&a.1.score).unwrap();
+
                 // Weight is calculated between 0.0 and 1.0, with higher values being most similar
                 fn calculate_weight(meta: &PluginSearchResult, query: &str) -> f64 {
                     let mut weight: f64 = 0.0;
@@ -592,24 +598,28 @@ impl<O: futures::Sink<Response> + Unpin> Service<O> {
         let mut non_windows = Vec::with_capacity(take);
         associated_list.clear();
 
-        let search_results =
-            active_search
-                .iter()
-                .take(take)
-                .enumerate()
-                .map(|(id, (plugin, meta))| {
-                    associated_list.insert(meta.id, id as u32);
-                    SearchResult {
-                        id: id as u32,
-                        name: meta.name.clone(),
-                        description: meta.description.clone(),
-                        icon: meta.icon.clone(),
-                        category_icon: plugins
-                            .get(*plugin)
-                            .and_then(|conn| conn.config.icon.clone()),
-                        window: meta.window,
-                    }
-                });
+        let search_results = active_search
+            .iter()
+            .take(take)
+            .inspect(|e| {
+                if query.len() == 4 {
+                    warn!("{:?}", e.1);
+                }
+            })
+            .enumerate()
+            .map(|(id, (plugin, meta))| {
+                associated_list.insert(meta.id, id as u32);
+                SearchResult {
+                    id: id as u32,
+                    name: meta.name.clone(),
+                    description: meta.description.clone(),
+                    icon: meta.icon.clone(),
+                    category_icon: plugins
+                        .get(*plugin)
+                        .and_then(|conn| conn.config.icon.clone()),
+                    window: meta.window,
+                }
+            });
 
         for result in search_results {
             if result.window.is_some() {
