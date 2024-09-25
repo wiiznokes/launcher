@@ -1,10 +1,14 @@
 use std::collections::HashSet;
 
 use cctk::{
-    cosmic_protocols,
+    cosmic_protocols::{
+        self,
+        workspace::{self, v1::client::zcosmic_workspace_handle_v1::ZcosmicWorkspaceHandleV1},
+    },
     toplevel_info::{ToplevelInfo, ToplevelInfoHandler, ToplevelInfoState},
     toplevel_management::{ToplevelManagerHandler, ToplevelManagerState},
     wayland_client::{self, WEnum},
+    workspace::{WorkspaceHandler, WorkspaceState},
 };
 use sctk::{
     self,
@@ -17,6 +21,7 @@ use sctk::{
 use cosmic_protocols::{
     toplevel_info::v1::client::zcosmic_toplevel_handle_v1::{self, ZcosmicToplevelHandleV1},
     toplevel_management::v1::client::zcosmic_toplevel_manager_v1,
+    workspace::v1::client::zcosmic_workspace_handle_v1,
 };
 use futures::channel::mpsc::UnboundedSender;
 use sctk::registry::{ProvidesRegistryState, RegistryState};
@@ -29,10 +34,14 @@ pub enum ToplevelAction {
     Close(ZcosmicToplevelHandleV1),
 }
 
-pub type TopLevelsUpdate = Vec<(
-    zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    Option<ToplevelInfo>,
-)>;
+pub struct TopLevelsUpdate2 {
+    pub handle: zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+    pub info: Option<ToplevelInfo>,
+}
+pub enum TopLevelsUpdate {
+    TopLevels(Vec<TopLevelsUpdate2>),
+    Workspace(ZcosmicWorkspaceHandleV1),
+}
 
 struct AppData {
     exit: bool,
@@ -42,6 +51,8 @@ struct AppData {
     toplevel_manager_state: ToplevelManagerState,
     seat_state: SeatState,
     pending_update: HashSet<zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1>,
+    workspace_state: WorkspaceState,
+    last_active_workspace: Option<ZcosmicWorkspaceHandleV1>,
 }
 
 impl ProvidesRegistryState for AppData {
@@ -127,16 +138,16 @@ impl ToplevelInfoHandler for AppData {
     }
 
     fn info_done(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>) {
-        let mut res = Vec::with_capacity(self.pending_update.len());
+        let mut res: Vec<TopLevelsUpdate2> = Vec::with_capacity(self.pending_update.len());
 
         for toplevel_handle in self.pending_update.drain() {
-            res.push((
-                toplevel_handle.clone(),
-                self.toplevel_info_state.info(&toplevel_handle).cloned(),
-            ));
+            res.push(TopLevelsUpdate2 {
+                handle: toplevel_handle.clone(),
+                info: self.toplevel_info_state.info(&toplevel_handle).cloned(),
+            });
         }
 
-        if let Err(err) = self.tx.unbounded_send(res) {
+        if let Err(err) = self.tx.unbounded_send(TopLevelsUpdate::TopLevels(res)) {
             warn!("{err}");
         }
     }
@@ -182,8 +193,10 @@ pub(crate) fn toplevel_handler(
         seat_state: SeatState::new(&globals, &qh),
         toplevel_info_state: ToplevelInfoState::new(&registry_state, &qh),
         toplevel_manager_state: ToplevelManagerState::new(&registry_state, &qh),
+        workspace_state: WorkspaceState::new(&registry_state, &qh),
         registry_state,
         pending_update: HashSet::new(),
+        last_active_workspace: None,
     };
 
     loop {
@@ -198,3 +211,38 @@ sctk::delegate_seat!(AppData);
 sctk::delegate_registry!(AppData);
 cctk::delegate_toplevel_info!(AppData);
 cctk::delegate_toplevel_manager!(AppData);
+
+impl WorkspaceHandler for AppData {
+    fn workspace_state(&mut self) -> &mut cctk::workspace::WorkspaceState {
+        &mut self.workspace_state
+    }
+
+    fn done(&mut self) {
+        for group in self.workspace_state.workspace_groups() {
+            for workspace in &group.workspaces {
+                if workspace.state.iter().any(|e| {
+                    matches!(
+                        e.into_result(),
+                        Ok(zcosmic_workspace_handle_v1::State::Active)
+                    )
+                }) {
+                    if self.last_active_workspace.as_ref() != Some(&workspace.handle) {
+                        self.last_active_workspace = Some(workspace.handle.clone());
+
+                        if let Err(err) = self
+                            .tx
+                            .unbounded_send(TopLevelsUpdate::Workspace(workspace.handle.clone()))
+                        {
+                            warn!("{err}");
+                        }
+                    } else {
+                        warn!("skip done workspace because the last active is already this one");
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
+cctk::delegate_workspace!(AppData);

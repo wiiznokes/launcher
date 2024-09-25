@@ -6,7 +6,7 @@ use cctk::{cosmic_protocols, sctk::reexports::calloop, toplevel_info::ToplevelIn
 use cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1;
 use fde::DesktopEntry;
 use freedesktop_desktop_entry as fde;
-use toplevel_handler::TopLevelsUpdate;
+use toplevel_handler::{TopLevelsUpdate, TopLevelsUpdate2};
 use tracing::{debug, error, info, warn};
 
 use crate::desktop_entries::utils::{get_description, is_session_cosmic};
@@ -70,29 +70,57 @@ pub async fn main() {
                 next_event = toplevel_rx.next();
                 next_request = second_to_next_request;
 
-                for (handle, info) in updates {
-                    match info {
-                        Some(info) => {
-                            if let Some(pos) = app.toplevels.iter().position(|t| t.0 == handle) {
-                                if info.state.contains(&State::Activated) {
-                                    app.toplevels.remove(pos);
-                                    app.toplevels.push((handle, Box::new(info)));
-                                } else {
-                                    app.toplevels[pos].1 = Box::new(info);
+                match updates {
+                    TopLevelsUpdate::TopLevels(vec) => {
+                        for TopLevelsUpdate2 { handle, info } in vec {
+                            match info {
+                                Some(info) => {
+                                    if let Some(pos) =
+                                        app.toplevels.iter().position(|t| t.0 == handle)
+                                    {
+                                        if info.state.contains(&State::Activated) {
+                                            warn!("update toplevel: up {}", info.app_id);
+
+                                            app.toplevels.remove(pos);
+                                            app.toplevels.push((handle, Box::new(info)));
+                                        } else {
+                                            app.toplevels[pos].1 = Box::new(info);
+                                        }
+                                    } else {
+                                        app.toplevels.push((handle, Box::new(info)));
+                                    }
                                 }
-                            } else {
-                                app.toplevels.push((handle, Box::new(info)));
+                                // no info means remove
+                                None => {
+                                    if let Some(pos) =
+                                        app.toplevels.iter().position(|t| t.0 == handle)
+                                    {
+                                        app.toplevels.remove(pos);
+                                        // ignore requests for this id until after the next search
+                                        app.ids_to_ignore.push(handle.id().protocol_id());
+                                    } else {
+                                        warn!("no toplevel to remove");
+                                    }
+                                }
                             }
                         }
-                        // no info means remove
-                        None => {
-                            if let Some(pos) = app.toplevels.iter().position(|t| t.0 == handle) {
-                                app.toplevels.remove(pos);
-                                // ignore requests for this id until after the next search
-                                app.ids_to_ignore.push(handle.id().protocol_id());
-                            } else {
-                                warn!("no toplevel to remove");
-                            }
+                    }
+                    TopLevelsUpdate::Workspace(workspace_handle) => {
+
+                        warn!("update workspace");
+
+                        if let Some(pos) = app
+                            .toplevels
+                            .iter()
+                            .rev()
+                            .position(|(_, info)| info.workspace.contains(&workspace_handle) && !info.state.contains(&State::Minimized))
+                        {
+                            let e = app.toplevels.remove(pos);
+                            
+                            warn!("update workspace: up {}", e.1.app_id);
+
+                            app.toplevels.push(e);
+
                         }
                     }
                 }
