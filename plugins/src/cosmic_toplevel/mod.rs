@@ -113,7 +113,7 @@ pub async fn main() {
                             .toplevels
                             .iter()
                             .rev()
-                            .position(|(_, info)| info.workspace.contains(&workspace_handle) && !info.state.contains(&State::Minimized))
+                            .position(|(_, info)| info.workspace.contains(&workspace_handle) && info.state.contains(&State::Activated))
                         {
                             let e = app.toplevels.remove(pos);
                             
