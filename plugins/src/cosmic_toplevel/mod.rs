@@ -78,7 +78,12 @@ pub async fn main() {
                                     if let Some(pos) =
                                         app.toplevels.iter().position(|t| t.0 == handle)
                                     {
-                                        if info.state.contains(&State::Activated) {
+                                        if info.state.contains(&State::Activated)
+                                            && !app.toplevels[pos]
+                                                .1
+                                                .state
+                                                .contains(&State::Activated)
+                                        {
                                             warn!("update toplevel: up {}", info.app_id);
 
                                             app.toplevels.remove(pos);
@@ -106,21 +111,37 @@ pub async fn main() {
                         }
                     }
                     TopLevelsUpdate::Workspace(workspace_handle) => {
+                        warn!("update workspace {}", workspace_handle.id().protocol_id());
 
-                        warn!("update workspace");
-
-                        if let Some(pos) = app
+                        let e = app
                             .toplevels
                             .iter()
-                            .rev()
-                            .position(|(_, info)| info.workspace.contains(&workspace_handle) && info.state.contains(&State::Activated))
-                        {
-                            let e = app.toplevels.remove(pos);
-                            
+                            .map(|(_, info)| {
+                                let e = info
+                                    .workspace
+                                    .iter()
+                                    .map(|e| e.id().protocol_id())
+                                    .collect::<Vec<_>>();
+                                (
+                                    info.app_id.clone(),
+                                    info.state.iter().collect::<Vec<_>>(),
+                                    e,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+
+                        warn!("{:?}", e);
+
+                        if let Some(pos) = app.toplevels.iter().rev().position(|(_, info)| {
+                            info.workspace.iter().any(|e| {
+                                e.id().protocol_id() == workspace_handle.id().protocol_id()
+                            }) && info.state.contains(&State::Activated)
+                        }) {
+                            let e = app.toplevels.remove(app.toplevels.len() - (pos + 1));
+
                             warn!("update workspace: up {}", e.1.app_id);
 
                             app.toplevels.push(e);
-
                         }
                     }
                 }

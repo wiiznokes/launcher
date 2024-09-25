@@ -218,6 +218,7 @@ impl WorkspaceHandler for AppData {
     }
 
     fn done(&mut self) {
+        let mut i = 0;
         for group in self.workspace_state.workspace_groups() {
             for workspace in &group.workspaces {
                 if workspace.state.iter().any(|e| {
@@ -229,6 +230,9 @@ impl WorkspaceHandler for AppData {
                     if self.last_active_workspace.as_ref() != Some(&workspace.handle) {
                         self.last_active_workspace = Some(workspace.handle.clone());
 
+                        i+=1;
+
+                        warn!("send workspace: {}", workspace.name);
                         if let Err(err) = self
                             .tx
                             .unbounded_send(TopLevelsUpdate::Workspace(workspace.handle.clone()))
@@ -238,7 +242,7 @@ impl WorkspaceHandler for AppData {
                     } else {
                         warn!("skip done workspace because the last active is already this one");
                     }
-                    return;
+                    // return;
                 }
             }
         }
@@ -246,3 +250,4 @@ impl WorkspaceHandler for AppData {
 }
 
 cctk::delegate_workspace!(AppData);
+
